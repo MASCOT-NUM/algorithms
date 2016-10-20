@@ -1,4 +1,4 @@
-# template
+# algorithms
 This repository contains filled template files in many languages (see http://www.gdr-mascotnum.fr/template.html).
 
 Basics:
