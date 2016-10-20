@@ -1,10 +1,9 @@
-# template
-This repository contains several empty template files for many languages (see http://www.gdr-mascotnum.fr/template.html).
+# algorithms
+This repository contains filled template files in many languages (see http://www.gdr-mascotnum.fr/template.html).
 
 Basics:
 
-- The template is provided for many languages, so I/O objects have to remain in common types (numeric arrays/matrices, strings).
-- Four methods/functions are required:
+- Four methods/functions are provided:
    - 'MyAlgorithm', which allows to initialize the environment, parse options, load dependencies
    - 'getInitialDesign', which returns the first design of experiments
    - 'getNextDesign', which returns the new experiments to perform, or null/empty object if algorithm ends.
@@ -13,7 +12,7 @@ Basics:
 - Extended information may be provided in header commented lines (information, algorithm options, dependencies, authors, ...)
 
 
-These implementations are designed to follow such a workflow:
+So all implementations are designed to follow such a workflow:
 
 1. setup the algorithm options according to 'option:' header line
 2. algorithm = MyAlgorithm(options) to return the algorithm with its options initialized
@@ -29,4 +28,4 @@ These implementations are designed to follow such a workflow:
 12. displayResults(algorithm,Xn,Yn) to return a final analysis of results, as an HTML string (possibly including base64 files)
 
 
-![Analytics](https://ga-beacon.appspot.com/UA-109580-20/MASCOT-NUM/template)
+![Analytics](https://ga-beacon.appspot.com/UA-109580-20/MASCOT-NUM/algorithms)
