@@ -1,10 +1,11 @@
-#help=Efficient Global Optimization (EGO)
-#type=Optimization
-#output=Optimum
-#options=initBatchSize=4,batchSize=4,iterations=10,bounds=true,trend=y~1,covtype=matern3_2,liar=max,search_min=false
-#require=lhs,DiceKriging,DiceView,pso
+#title: EGO
+#help: Efficient Global Optimization (EGO)
+#type: optimization
+#author: yann.richet@irsn.fr, DiceKriging authors
+#require: lhs,DiceKriging,DiceView,pso
+#options: initBatchSize='4',batchSize='4',iterations='10',bounds='true|false',trend='y~1',covtype='matern3_2|matern5_2|gauss|powexp|exp',liar='max|min|upper95|lower95',search_min='true|false'
+#options.help: initBatchSize=Initial batch size,batchSize=iterations batch size,iterations=number of iterations,bounds=add input variables bounding values (2^d combinations),trend=(Universal) kriging trend,covtype=Kriging covariance kernel,liar=liar value for in-batch loop (when batchsize>1),search_min=minimization or maximisation
 
-#' constructor and initializer of R session
 EGO <- function(options) {
   library(lhs)
   library(DiceKriging)
@@ -25,17 +26,14 @@ EGO <- function(options) {
   return(ego)
 }
 
-#' first design building. All variables are set in [0,1].
-#' @param d number of variables
-#' @return next design of experiments
-getInitialDesign <- function(ego,d) {
+getInitialDesign <- function(algorithm, d) {
   set.seed(1)
-  if(ego$initBatchSize < 100){
-    lhs <- optimumLHS(n=ego$initBatchSize,k=d)
+  if(algorithm$initBatchSize < 100){
+    lhs <- optimumLHS(n=algorithm$initBatchSize,k=d)
   }else{
-    lhs <- maximinLHS(n=ego$initBatchSize,k=d)
+    lhs <- maximinLHS(n=algorithm$initBatchSize,k=d)
   }
-  if (ego$bounds) {
+  if (isTRUE(algorithm$bounds)) {
     e=c(0,1)
     id=1
     while(id<d){
@@ -49,12 +47,8 @@ getInitialDesign <- function(ego,d) {
   return(Xinit)
 }
 
-#' iterated design building.
-#' @param X data frame of current doe variables (in [0,1])
-#' @param Y data frame of current results
-#' @return  next doe step
-getNextDesign <- function(ego,X,Y) {
-  if (ego$i > ego$iterations) return();
+getNextDesign <- function(algorithm, X, Y) {
+  if (algorithm$i > algorithm$iterations) return();
 
   d = dim(X)[2]
   if (dim(Y)[2] == 2) {
@@ -63,53 +57,61 @@ getNextDesign <- function(ego,X,Y) {
     noise.var <- NULL
   }
 
-  if (ego$search_min) {y=Y[,1]} else {y=-Y[,1]}
+  if (isTRUE(algorithm$search_min)) {y=Y[,1]} else {y=-Y[,1]}
 
-  ego$kmi <- km(control=list(trace=FALSE),ego$trend,optim.method='BFGS',covtype=ego$covtype, noise.var = noise.var,design=X,response=y)
+  # heurisitc for lower bound of theta
+  dX = apply(FUN = dist, X, MARGIN = 2)
+  dy = apply(FUN = dist, Y, MARGIN = 2)
 
-  EGOi <- max_qEI(model=ego$kmi,npoints=ego$batchSize,L=ego$liar,lower=rep(0,d),upper=rep(1,d),control=list(trace=FALSE))
+  algorithm$kmi <- km(lower= max(1e-6, 0.1 * dX[which.max(dy/rowSums(dX))]),control=list(trace=FALSE),algorithm$trend,optim.method='BFGS',covtype=algorithm$covtype, noise.var = noise.var,design=X,response=y)
+
+  EGOi <- max_qEI(model=algorithm$kmi,npoints=algorithm$batchSize,L=algorithm$liar,lower=rep(0,d),upper=rep(1,d),control=list(trace=FALSE))
   if (is.null(EGOi)) return()
 
   Xnext <- EGOi$par
 
-  ego$i <- ego$i + 1
+  algorithm$i <- algorithm$i + 1
   return(as.matrix(Xnext))
 }
 
-#' final analysis.
-#' @param X data frame of doe variables (in [0,1])
-#' @param Y data frame of results
-#' @return HTML string of analysis
-displayResults <- function(ego,X,Y) {
-  analyse.files <- paste("sectionview_",ego$i-1,".png",sep="")
+displayResults <- function(algorithm, X, Y) {
+  algorithm$files <- paste("sectionview_",algorithm$i-1,".png",sep="")
   resolution <- 600
 
   if (dim(Y)[2] == 2) {
-    noise.var <<- as.array(Y[,2])^2
+    noise.var <- as.array(Y[,2])^2
     yname=paste0("N(",names(Y)[1],",",names(Y)[2])
   } else {
-    noise.var <<- NULL
+    noise.var <- NULL
     yname=names(Y)
   }
 
-  if (ego$search_min) {
+  if (isTRUE(algorithm$search_min)) {
     m = min(Y[,1])
     x = as.matrix(X)[which(Y[,1]==m),]
-    html=paste(sep="<br/>",paste("<HTML>minimum is ",m),paste(sep="","found at ",paste(collapse="<br/>",paste(sep="= ",names(x),x)),"<br/><img src='",analyse.files,"' width='",resolution,"' height='",resolution,"'/></HTML>"))
+    html=paste(sep="<br/>",paste("<HTML>minimum is ",m),paste(sep="","found at <br/>",paste(collapse="<br/>",paste(sep="= ",names(x),x)),"<br/><img src='",algorithm$files,"' width='",resolution,"' height='",resolution,"'/></HTML>"))
   } else {
     m = max(Y[,1])
     x = as.matrix(X)[which(Y[,1]==m),]
-    html=paste(sep="<br/>",paste("<HTML>maximum is ",m),paste(sep="","found at ",paste(collapse="<br/>",paste(sep="= ",names(x),x)),"<br/><img src='",analyse.files,"' width='",resolution,"' height='",resolution,"'/></HTML>"))
+    html=paste(sep="<br/>",paste("<HTML>maximum is ",m),paste(sep="","found at <br/>",paste(collapse="<br/>",paste(sep="= ",names(x),x)),"<br/><img src='",algorithm$files,"' width='",resolution,"' height='",resolution,"'/></HTML>"))
   }
 
-  png(file=analyse.files,bg="transparent",height=resolution,width = resolution)
-  try(sectionview.km(ego$kmi,center=x,Xname=names(X),yname=yname))
+  # needed because sectionview is not well suited when X min/max is changed (as algorthm$kmi works in [0,1] by default)
+  if (isTRUE(algorithm$search_min)) {y=Y[,1]} else {y=-Y[,1]}
+  dX = apply(FUN = dist, X, MARGIN = 2)
+  dy = apply(FUN = dist, Y, MARGIN = 2)
+  kmi <- km(lower= max(1e-6, 0.1 * dX[which.max(dy/rowSums(dX))]),control=list(trace=FALSE),algorithm$trend,optim.method='BFGS',covtype=algorithm$covtype, noise.var = noise.var,design=X,response=y)
+  
+  png(file=algorithm$files,bg="transparent",height=resolution,width = resolution)
+  try(sectionview.km(kmi,center=x,Xname=names(X),yname=yname))
   dev.off()
 
   return(html)
 }
 
-################################################################################
+distXmin <- function(x,Xmin) {
+  return(min(sqrt(rowSums((Xmin-matrix(x,nrow=nrow(Xmin),ncol=ncol(Xmin),byrow=TRUE))^2))))
+}
 
 #' @test X=matrix(runif(10),ncol=1); y=-sin(pi*X); kmi <- km(design=X,response=y); EI(runif(100),kmi)
 #' @test X=matrix(runif(10),ncol=1); y=-sin(pi*X); kmi <- km(design=X,response=y); DiceView::sectionview.fun(function(x)EI(x,kmi),dim=1)
@@ -127,6 +129,7 @@ EI <- function (x, model, plugin=NULL) {
   colnames(newdata) = colnames(model@X)
 
   ########################################################################################
+  
   #cat("predict...")
   predx <- predict.km(object=model, newdata=newdata, type="UK", checkNames = FALSE)
   #cat(" done.\n")
@@ -146,7 +149,7 @@ EI <- function (x, model, plugin=NULL) {
 }
 
 #' @test set.seed(1); X=matrix(runif(20),ncol=2); y=branin(X); kmi <- km(design=X,response=y); kmi=km(design=X,response=y); DiceView::contourview.fun(function(x)EI(x,kmi),dim=2); points(max_EI(kmi,lower=c(0,0),upper=c(1,1))$par)
-max_EI <-function(model,  lower, upper, control=NULL) {
+max_EI <- function(model,  lower, upper, control=NULL) {
 
   d <- ncol(model@X)
 
@@ -162,7 +165,6 @@ max_EI <-function(model,  lower, upper, control=NULL) {
   #t=Sys.time()
   ei <- EI(pars,model)
   #print(capture.output(Sys.time()-t))
-  print(cbind(pars,ei))
 
   good_start = which(ei==max(ei,na.rm=T))
   par0=matrix(pars[good_start[sample(1:length(good_start),1)],],nrow=1)

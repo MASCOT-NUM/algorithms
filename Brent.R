@@ -1,7 +1,10 @@
-#help=Brent method for root finding
-#type=Inversion
-#output=root
-#parameters=Target=0.0,EPS=3.e-8,tol=1.e-8,iMax=100
+#title: Brent
+#help: Brent method for 1D root finding
+#type: inversion
+#author: miguel.munoz-zuniga@ifpen.fr
+#require: 
+#options: Target='0.0',EPS='3.e-8',tol='1.e-8',iMax='100'
+#options.help: Target=Targeted value to inverse,EPS=?,tol=tolerance for root estimation,iMax=Maximum iterations
 
 Brent <- function(options) {
     options$EPS <- as.numeric(options$EPS)
@@ -16,37 +19,41 @@ Brent <- function(options) {
     return(brent)
 }
 
-## first design building. All variables are set in [0,1]. d is the dimension, or number of variables
-getInitialDesign <- function(brent, d) {
-    brent$i <- 0
-    brent$exit <- -1    # Reason end of algo
-    x = c(0, 1, 1)
-    return(as.matrix(x))
+getInitialDesign <- function(algorithm, d) {
+    if (d!=1) stop("Cannot find root of >1D function")
+    
+    algorithm$i <- 0
+    algorithm$exit <- -1    # Reason end of algo
+    
+    x = c(0, 1)
+    return(matrix(x))
 }
 
-## iterated design building.
-## @param X data frame of current doe variables (in [0,1])
-## @param Y data frame of current results
-## @return data frame or matrix of next doe step
-getNextDesign <- function(brent, X, Y) {
-    X = as.matrix(X)
-    Y = as.matrix(Y) - brent$Target
-    if (brent$i >= brent$iMax) {
-        brent$exit <- 2
+getNextDesign <- function(algorithm, X, Y) {
+    # to remain consistent with other iterations, as we expect to have 3 last values of X and Y
+    if (algorithm$i <= 0) {
+        X = rbind(X,X[2])
+        Y = rbind(Y,Y[2])
+    }
+    
+    if (algorithm$i >= algorithm$iMax) {
+        algorithm$exit <- 2
         return(NULL)
     }
-    brent$i <- brent$i + 1
+    algorithm$i <- algorithm$i + 1
     
+    Y = Y - algorithm$Target
+
     a <- as.numeric(X[length(X) - 2, 1])
     b <- as.numeric(X[length(X) - 1, 1])
     c <- as.numeric(X[length(X), 1])
     fa <- as.numeric(Y[length(Y) - 2, 1])
     fb <- as.numeric(Y[length(Y) - 1, 1])
     fc <- as.numeric(Y[length(Y), 1])
-    if (brent$i == 1 &
+    if (algorithm$i == 1 &
         fa * fb > 0) {
-        # root must be bracketed for Brent
-        brent$exit <- 1
+        # root must be bracketed for algorithm
+        algorithm$exit <- 1
         return(NULL)
     }
     
@@ -54,10 +61,13 @@ getNextDesign <- function(brent, X, Y) {
         #Rename a, b, c and adjust bounding interval d
         c <- a
         fc <- fa
-        d <<- b - a
-        e <<- d
+        d <- b - a
+        e <- d
+    } else {
+        d = c-b
+        e = d
     }
-    #else { d = c-b ; e = d}
+
     if (abs(fc) < abs(fb)) {
         # b stand for the best approx of the root which will lie between b and c
         a = b
@@ -68,13 +78,12 @@ getNextDesign <- function(brent, X, Y) {
         fc = fa
     }
     
-    tol1 = 2. * brent$EPS * abs(b) + 0.5 * brent$tol # Convergence check tolerance.
+    tol1 = 2. * algorithm$EPS * abs(b) + 0.5 * algorithm$tol # Convergence check tolerance.
     xm = .5 * (c - b)
-    if (abs(xm) <= tol1 |
-        fb == 0) {
+    if (abs(xm) <= tol1 | fb == 0) {
         # stop if fb = 0 return root b or tolerance reached
         Xnext = NULL
-        brent$exit <- 0
+        algorithm$exit <- 0
         return(Xnext)
     }
     if ((abs(e) >= tol1) & (abs(fa) > abs(fb))) {
@@ -99,18 +108,18 @@ getNextDesign <- function(brent, X, Y) {
         p = abs(p)
         if (2. * p < min(3. * xm * q - abs(tol1 * q), abs(e * q))) {
             #print("confirmInterpol")
-            e <<- d #Accept interpolation.
-            d <<- p / q
+            e <- d #Accept interpolation.
+            d <- p / q
         } else {
             #print("bisection1")
-            d <<- xm #Interpolation failed, use bisection.
-            e <<- d
+            d <- xm #Interpolation failed, use bisection.
+            e <- d
         }
     } else {
         # Bounds decreasing too slowly, use bisection.
         #print("bisection2")
         d = xm
-        e <<- d
+        e <- d
     }
     a = b #Move last best guess to a.
     fa = fb
@@ -124,62 +133,52 @@ getNextDesign <- function(brent, X, Y) {
     return(matrix(Xnext, ncol = 1))
 }
 
-## final analysis. All variables are set in [0,1]. Return HTML string
-## @param X data frame of doe variables (in [0,1])
-## @param Y data frame of  results
-## @return HTML string of analysis
-displayResults <- function(brent, X, Y) {
-    if (brent$exit == 1)
+displayResults <- function(algorithm, X, Y) {
+    if (algorithm$exit == 1)
         exit.txt = "root not bracketed"
-    else if (brent$exit == 2)
+    else if (algorithm$exit == 2)
         exit.txt = "maximum iteration reached"
-    else if (brent$exit == 0)
+    else if (algorithm$exit == 0)
         exit.txt = "algorithm converged"
     else
-        exit.txt = paste("error code", brent$exit)
+        exit.txt = paste("error code", algorithm$exit)
     
-    analyse.files <<- paste("result", brent$i, ".png", sep = "")
+    algorithm$files <- paste("result", algorithm$i, ".png", sep = "")
     height <- 500
     width <- 500
     
-    png(file = analyse.files,
+    png(file = algorithm$files,
         height = height,
         width = width)
-    plot(as.matrix(X),
-         as.matrix(Y),
+    plot(X,
+         Y,
          pch = 20,
          col = "grey70")
     #plot(as.matrix(X[3*i-1,1]),as.matrix(Y[3*i-1,1]),pch=20,col="grey70")
-    abline(h = brent$Target,
+    abline(h = algorithm$Target,
            lty = 2,
            col = "grey70")
     dev.off()
     
     html <-
-        paste(
-            sep = "",
-            " <HTML name='Root'>in iteration number ",
-            brent$i,
+        paste0(
+            " <HTML name='Root'>In iteration number ",
+            algorithm$i,": ",exit.txt,
             ".<br/>",
             "the root approximation is ",
-            X[3 * brent$i - 1, 1],
+            X[3 * algorithm$i - 1, 1],
             ".<br/>",
             "corresponding to the value ",
-            Y[3 * brent$i - 1, 1],
+            Y[3 * algorithm$i - 1, 1],
             "<br/><img src='",
-            analyse.files,
+            algorithm$files,
             "' width='",
             width,
             "' height='",
             height,
             "'/>",
-            "<br/>Exit due to ",
-            exit.txt,
-            "<br/></HTML><Plot1D name='",
-            names(X),
-            "'>",
-            X[3 * brent$i - 1, 1],
-            "</Plot1D>"
+            "</HTML>"
         )
     return(html)
 }
+
